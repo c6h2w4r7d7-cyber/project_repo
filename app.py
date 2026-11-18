@@ -355,21 +355,21 @@ def calculate_score(
     aqi,
     return_breakdown=False
 ):
-
-    # Distance: maximum 30 points
     route_distance = number(route.get("distance"))
     if route_distance is not None and route_distance <= 0:
         route_distance = None
+
     gain = number(route.get("elevation"))
     if gain is not None and gain < 0:
         gain = None
+
     temperature, aqi = number(temperature), number(aqi)
-        distance_score = (
+
+    distance_score = (
         max(0, 30 - abs(route_distance - target_distance) * 6)
         if route_distance is not None else None
     )
 
-    # Elevation: maximum 30 points
     elevation_per_km = (
         gain / max(route_distance, 0.1)
         if gain is not None and route_distance is not None else None
@@ -380,46 +380,62 @@ def calculate_score(
         if elevation_per_km is not None else None
     )
 
-    # Temperature: maximum 15 points
-    temperature_score = max(
-        0,
-        15 - abs(temperature - 15)
-    ) if temperature is not None else None
+    temperature_score = (
+        max(0, 15 - abs(temperature - 15))
+        if temperature is not None else None
+    )
 
-    # Air quality: maximum 15 points
-    air_score = max(
-        0,
-        15 - max(0, aqi - 20) * 0.3
-    ) if aqi is not None else None
+    air_score = (
+        max(0, 15 - max(0, aqi - 20) * 0.3)
+        if aqi is not None else None
+    )
 
-        components = [
-        {"Factor": "Distance", "Points": distance_score, "Maximum": 30,
-         "Input": f"{metric_text(route_distance, ' km')} / target {target_distance:g} km",
-         "Calculation": "max(0, 30 - abs(distance - target) × 6)"},
-        {"Factor": "Elevation", "Points": elevation_score, "Maximum": 30,
-         "Input": f"{metric_text(elevation_per_km, ' m/km')}; limit {limit:g} m/km ({fitness}, {hill_preference})",
-         "Calculation": "max(0, 30 - max(0, gain per km - limit)); gain per km = gain / max(distance, 0.1)"},
-        {"Factor": "Temperature", "Points": temperature_score, "Maximum": 15,
-         "Input": metric_text(temperature, ' °C'),
-         "Calculation": "max(0, 15 - abs(temperature - 15))"},
-        {"Factor": "Air quality", "Points": air_score, "Maximum": 15,
-         "Input": f"European AQI: {metric_text(aqi)}",
-         "Calculation": "max(0, 15 - max(0, AQI - 20) × 0.3)"},
-        {"Factor": "Forest coverage (shade proxy)", "Points": shade_score, "Maximum": 10,
-         "Input": f"{metric_text(shade, '%')}; preference {shade_preference}",
-         "Calculation": shade_rules.get(shade_preference, "10")},
+    components = [
+        {
+            "Factor": "Distance",
+            "Points": distance_score,
+            "Maximum": 30,
+            "Input": f"{metric_text(route_distance, ' km')} / target {target_distance:g} km",
+            "Calculation": "max(0, 30 - abs(distance - target) × 6)",
+        },
+        {
+            "Factor": "Elevation",
+            "Points": elevation_score,
+            "Maximum": 30,
+            "Input": f"{metric_text(elevation_per_km, ' m/km')}; limit {limit:g} m/km ({fitness}, {hill_preference})",
+            "Calculation": "max(0, 30 - max(0, gain per km - limit)); gain per km = gain / max(distance, 0.1)",
+        },
+        {
+            "Factor": "Temperature",
+            "Points": temperature_score,
+            "Maximum": 15,
+            "Input": metric_text(temperature, " °C"),
+            "Calculation": "max(0, 15 - abs(temperature - 15))",
+        },
+        {
+            "Factor": "Air quality",
+            "Points": air_score,
+            "Maximum": 15,
+            "Input": f"European AQI: {metric_text(aqi)}",
+            "Calculation": "max(0, 15 - max(0, AQI - 20) × 0.3)",
+        },
     ]
+
     available = [item for item in components if item["Points"] is not None]
     raw_total = sum(item["Points"] for item in available)
     available_max = sum(item["Maximum"] for item in available)
-    # Preserve the existing shade-only rescaling; apply the same policy to
-    # other missing factors instead of silently treating missing data as zero.
+
     total = raw_total
     if available_max and available_max != 100:
         total = total / available_max * 100
+
     score = round(max(0, min(100, total))) if available_max else None
-    breakdown = {"score": score, "components": components,
-                 "raw_total": raw_total, "available_max": available_max}
+    breakdown = {
+        "score": score,
+        "components": components,
+        "raw_total": raw_total,
+        "available_max": available_max,
+    }
     return breakdown if return_breakdown else score
 
 
@@ -448,15 +464,6 @@ def preference_warnings(route, preferences):
                 f"Elevation mismatch: {gain_per_km:.1f} m gain/km; "
                 f"{preferences['hill_preference']} accepts {minimum:g}–{maximum:g} m gain/km."
             )
-    coverage = number(route.get("shade"))
-    if coverage is None or not 0 <= coverage <= 100:
-        warnings.append("Forest coverage unavailable — the shade preference could not be checked.")
-    elif not preferences["shade_min"] <= coverage <= preferences["shade_max"]:
-        warnings.append(
-            f"Shade preference mismatch: {coverage:g}% forest coverage (shade proxy); "
-            f"{preferences['shade_preference']} accepts "
-            f"{preferences['shade_min']:g}–{preferences['shade_max']:g}%."
-        )
     return warnings
 
 
@@ -548,7 +555,6 @@ with col2:
 # 11. GENERATE RUNNING ROUTES
 # ==========================================
 
-st.caption("Forest coverage is a shade proxy, not a measurement of actual shade.")
 
 with st.expander("Preference warning thresholds"):
     st.caption(
@@ -572,28 +578,17 @@ with st.expander("Preference warning thresholds"):
             "Minimum Hilly elevation gain per km (m/km)",
             min_value=0.0, value=10.0, step=1.0
         )
-    st.caption(
-        "Forest coverage defaults: High ≥70%, Medium 30–70%, Low ≤30%. "
-        "All boundaries are inclusive. Coverage estimates the share of sampled "
-        "points sampled at regular intervals along the route inside mapped forest."
-    )
-    if shade_preference == "High":
-        shade_min = st.number_input("Minimum High forest coverage (%)", 0.0, 100.0, 70.0)
-        shade_max = 100.0
-    elif shade_preference == "Low":
-        shade_min = 0.0
-        shade_max = st.number_input("Maximum Low forest coverage (%)", 0.0, 100.0, 30.0)
-    else:
-        shade_min = st.number_input("Minimum Medium forest coverage (%)", 0.0, 100.0, 30.0)
-        shade_max = st.number_input("Maximum Medium forest coverage (%)", 0.0, 100.0, 70.0)
-
+    
 preferences = dict(
-    distance=distance, fitness=fitness, hill_preference=hill_preference,
-    shade_preference=shade_preference, distance_tolerance_pct=distance_tolerance_pct,
-    elevation_min=elevation_min, elevation_max=elevation_max,
-    shade_min=shade_min, shade_max=shade_max
+    distance=distance,
+    fitness=fitness,
+    hill_preference=hill_preference,
+    distance_tolerance_pct=distance_tolerance_pct,
+    elevation_min=elevation_min,
+    elevation_max=elevation_max,
 )
-thresholds_valid = elevation_min <= elevation_max and shade_min <= shade_max
+thresholds_valid = elevation_min <= elevation_max
+
 if not thresholds_valid:
     st.warning("Each minimum warning threshold must be less than or equal to its maximum.")
 
@@ -859,4 +854,3 @@ if st.session_state.routes:
         "Weather and air quality: Open-Meteo."        "Weather and air quality: Open-Meteo."
     )
 
-    
