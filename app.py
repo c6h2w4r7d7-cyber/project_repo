@@ -12,7 +12,6 @@ from swiss_services import (
     DEFAULT_ROUTER_URL,
     RoutingUnavailable,
     get_elevation_gain,
-    get_forest_coverages,
     get_running_route,
     number,
     project_route,
@@ -352,10 +351,8 @@ def calculate_score(
     target_distance,
     fitness,
     hill_preference,
-    shade_preference,
     temperature,
     aqi,
-    shade,
     return_breakdown=False
 ):
 
@@ -366,10 +363,8 @@ def calculate_score(
     gain = number(route.get("elevation"))
     if gain is not None and gain < 0:
         gain = None
-    temperature, aqi, shade = number(temperature), number(aqi), number(shade)
-    if shade is not None and not 0 <= shade <= 100:
-        shade = None
-    distance_score = (
+    temperature, aqi = number(temperature), number(aqi)
+        distance_score = (
         max(0, 30 - abs(route_distance - target_distance) * 6)
         if route_distance is not None else None
     )
@@ -397,29 +392,7 @@ def calculate_score(
         15 - max(0, aqi - 20) * 0.3
     ) if aqi is not None else None
 
-    # Shade: maximum 10 points
-    if shade is None:
-        shade_score = None
-
-    elif shade_preference == "High":
-        shade_score = shade / 10
-
-    elif shade_preference == "Low":
-        shade_score = (100 - shade) / 10
-
-    elif shade_preference == "Medium":
-# prefer a moderate amount of shade
-        shade_score = max(0, 10 - abs(shade - 50) / 5)
-
-    else:
-        shade_score = 10
-
-    shade_rules = {
-        "High": "Forest coverage / 10",
-        "Low": "(100 - forest coverage) / 10",
-        "Medium": "max(0, 10 - abs(forest coverage - 50) / 5)",
-    }
-    components = [
+        components = [
         {"Factor": "Distance", "Points": distance_score, "Maximum": 30,
          "Input": f"{metric_text(route_distance, ' km')} / target {target_distance:g} km",
          "Calculation": "max(0, 30 - abs(distance - target) × 6)"},
@@ -571,12 +544,6 @@ with col2:
         ["Flat", "Moderate", "Hilly"]
     )
 
-    shade_preference = st.selectbox(
-        "Shade preference",
-        ["High", "Medium", "Low"]
-    )
-
-
 # ==========================================
 # 11. GENERATE RUNNING ROUTES
 # ==========================================
@@ -691,29 +658,20 @@ if st.button("🚀 Find my perfect running route", disabled=not thresholds_valid
             aqi = number(air.get("european_aqi"))
 
             terrain_lines = [project_route(route["coordinates"]) for route in routes]
-            forest_unavailable = False
-            try:
-                coverages = get_forest_coverages(terrain_lines)
-            except (requests.RequestException, ValueError):
-                forest_unavailable = True
-                coverages = [None] * len(routes)
-
-            for route, terrain_line, coverage in zip(routes, terrain_lines, coverages):
+                    
+            for route, terrain_line in zip(routes, terrain_lines):                
                 try:
                     route["elevation"] = get_elevation_gain(terrain_line)
                 except (requests.RequestException, ValueError):
                     route["elevation"] = None
-                route["shade"] = coverage
-
+                
                 route["score_breakdown"] = calculate_score(
                     route,
                     distance,
                     fitness,
                     hill_preference,
-                    shade_preference,
                     temperature,
                     aqi,
-                    route["shade"],
                     return_breakdown=True
                 )
                 route["score"] = route["score_breakdown"]["score"]
@@ -733,8 +691,6 @@ if st.button("🚀 Find my perfect running route", disabled=not thresholds_valid
 
             st.session_state.weather = weather
             st.session_state.air = air
-
-            st.session_state.forest_unavailable = forest_unavailable
 
         except Exception as error:
 
@@ -767,11 +723,8 @@ if st.session_state.routes:
     if saved_preferences:
         st.caption(
             f"Generated for {saved_preferences['distance']:g} km · {saved_preferences['fitness']} · "
-            f"{saved_preferences['hill_preference']} elevation · {saved_preferences['shade_preference']} shade. "
             f"Warning thresholds: distance ±{saved_preferences['distance_tolerance_pct']:g}%; "
-            f"elevation {saved_preferences['elevation_min']:g}–{saved_preferences['elevation_max']:g} m/km; "
-            f"forest coverage {saved_preferences['shade_min']:g}–{saved_preferences['shade_max']:g}%."
-        )
+            f"elevation {saved_preferences['elevation_min']:g}–{saved_preferences['elevation_max']:g} m/km."        )
 
     st.header("🌤️ Current running conditions")
 
@@ -801,9 +754,6 @@ if st.session_state.routes:
         f"🌧️ Current precipitation: "
         f"{metric_text(weather.get('precipitation'), ' mm')}"
     )
-
-    if st.session_state.get("forest_unavailable"):
-        st.warning("Swiss forest data could not be loaded. Shade scoring is unavailable.")
 
     # ======================================
     # ROUTE MAP
@@ -861,19 +811,6 @@ if st.session_state.routes:
             metric_text(route.get('score'), '/100', 0)
         )
 
-        if number(route.get("shade")) is not None:
-
-            st.write(
-                f"🌳 Forest coverage (shade proxy): "
-                f"{route['shade']}%"
-            )
-
-        else:
-
-            st.write(
-                "🌳 Forest coverage (shade proxy): unavailable"
-            )
-
         for message in route.get("preference_warnings", []):
             st.warning(message)
 
@@ -898,7 +835,6 @@ if st.session_state.routes:
                         f"Available total: {breakdown['raw_total']:.2f} / {maximum}. "
                         f"Rescaled to 100 and rounded: {breakdown['score']}/100."
                     )
-                    st.caption("Missing factors are excluded, not treated as zero. With forest coverage missing, the original calculation rescales the available 90 points to 100; the same policy applies to missing route metrics.")
                 st.caption(
                     "Elevation scoring penalizes gain above its limit; it does not reward a minimum amount of hills. "
                     "Preference warnings are separate checks and do not deduct points. "
@@ -915,13 +851,12 @@ if st.session_state.routes:
 
     st.caption(
         "RunComfy AI uses real routing, weather and "
-        "air-quality data. Scores are rule-based. "
-        "Forest coverage is only a proxy for shade. "
-        "Actual shade depends on sunlight, trees, "
-        "buildings and time of day."
+        "air-quality data. Scores are rule-based."
     )
 
     st.caption(
-        "Maps, elevation and forests: © swisstopo. Routing: Valhalla, © OpenStreetMap contributors. "
-        "Weather and air quality: Open-Meteo."
+        "Maps and elevation: © swisstopo. Routing: Valhalla, © OpenStreetMap contributors. "
+        "Weather and air quality: Open-Meteo."        "Weather and air quality: Open-Meteo."
     )
+
+    
