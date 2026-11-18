@@ -8,14 +8,7 @@ from pathlib import Path
 
 from streamlit.errors import StreamlitSecretNotFoundError
 
-from swiss_services import (
-    DEFAULT_ROUTER_URL,
-    RoutingUnavailable,
-    get_elevation_gain,
-    get_running_route,
-    number,
-    project_route,
-)
+import swiss_services
 
 # ==========================================
 # 1. RUNCOMFY AI SETTINGS
@@ -51,8 +44,8 @@ def setting(name):
         return None
 
 
-ROUTER_URL = setting("RUNCOMFY_ROUTER_URL") or DEFAULT_ROUTER_URL
-cached_running_route = st.cache_data(ttl=900, max_entries=256)(get_running_route)
+ROUTER_URL = setting("RUNCOMFY_ROUTER_URL") or swiss_services.DEFAULT_ROUTER_URL
+cached_running_route = st.cache_data(ttl=900, max_entries=256)(swiss_services.get_running_route)
 
 swiss_map = st.components.v2.component(
     "runcomfy_swiss_map",
@@ -129,7 +122,7 @@ HILL_MULTIPLIERS = {"Flat": 0.5, "Moderate": 1, "Hilly": 2}
 
 
 def metric_text(value, unit="", decimals=1):
-    value = number(value)
+    value = swiss_services.number(value)
     return "Unavailable" if value is None else f"{value:.{decimals}f}{unit}"
 
 
@@ -181,8 +174,8 @@ def search_locations(address):
     matches = []
     for result in response.json().get("results", []):
         attributes = result.get("attrs", {})
-        lat = number(attributes.get("lat"))
-        lon = number(attributes.get("lon"))
+        lat = swiss_services.number(attributes.get("lat"))
+        lon = swiss_services.number(attributes.get("lon"))
         if lat is None or lon is None:
             continue
 
@@ -355,15 +348,15 @@ def calculate_score(
     aqi,
     return_breakdown=False
 ):
-    route_distance = number(route.get("distance"))
+    route_distance = swiss_services.number(route.get("distance"))
     if route_distance is not None and route_distance <= 0:
         route_distance = None
 
-    gain = number(route.get("elevation"))
+    gain = swiss_services.number(route.get("elevation"))
     if gain is not None and gain < 0:
         gain = None
 
-    temperature, aqi = number(temperature), number(aqi)
+    temperature, aqi = swiss_services.number(temperature), swiss_services.number(aqi)
 
     distance_score = (
         max(0, 30 - abs(route_distance - target_distance) * 6)
@@ -442,7 +435,7 @@ def calculate_score(
 def preference_warnings(route, preferences):
     """Check saved generation preferences, independently of ranking."""
     warnings = []
-    actual = number(route.get("distance"))
+    actual = swiss_services.number(route.get("distance"))
     if actual is None or actual <= 0:
         warnings.append("Distance unavailable — the distance and elevation preferences cannot be fully checked.")
     else:
@@ -453,7 +446,7 @@ def preference_warnings(route, preferences):
                 f"Distance mismatch: {actual:.2f} km versus {target:g} km requested. "
                 f"Allowed deviation: ±{preferences['distance_tolerance_pct']:g}% (±{tolerance:.2f} km)."
             )
-    gain = number(route.get("elevation"))
+    gain = swiss_services.number(route.get("elevation"))
     if gain is None or gain < 0:
         warnings.append("Elevation unavailable — the elevation preference could not be checked.")
     elif actual is not None and actual > 0:
@@ -506,8 +499,8 @@ picker = swiss_map(
 )
 clicked = picker.point
 if isinstance(clicked, dict) and clicked.get("revision") == st.session_state.start_revision:
-    selected_lat = number(clicked.get("lat"))
-    selected_lon = number(clicked.get("lng"))
+    selected_lat = swiss_services.number(clicked.get("lat"))
+    selected_lon = swiss_services.number(clicked.get("lng"))
     if (selected_lat is not None and 45.7 <= selected_lat <= 47.9
             and selected_lon is not None and 5.8 <= selected_lon <= 10.7):
         st.write(f"Selected: {selected_lat:.5f}, {selected_lon:.5f}")
@@ -610,7 +603,7 @@ if st.button("🚀 Find my perfect running route", disabled=not thresholds_valid
                     route = cached_running_route(
                         ROUTER_URL, lat, lon, distance, attempt, first_pass_distances.get(attempt % 4)
                     )
-                except RoutingUnavailable as error:
+                except swiss_services.RoutingUnavailable as error:
                     errors.append(str(error))
                     break
                 except (requests.RequestException, ValueError):
@@ -649,14 +642,14 @@ if st.button("🚀 Find my perfect running route", disabled=not thresholds_valid
                 air = get_air_quality(lat, lon)
             except (requests.RequestException, ValueError, KeyError):
                 air = {}
-            temperature = number(weather.get("temperature_2m"))
-            aqi = number(air.get("european_aqi"))
+            temperature = swiss_services.number(weather.get("temperature_2m"))
+            aqi = swiss_services.number(air.get("european_aqi"))
 
-            terrain_lines = [project_route(route["coordinates"]) for route in routes]
+            terrain_lines = [swiss_services.project_route(route["coordinates"]) for route in routes]
                     
             for route, terrain_line in zip(routes, terrain_lines):                
                 try:
-                    route["elevation"] = get_elevation_gain(terrain_line)
+                    route["elevation"] = swiss_services.get_elevation_gain(terrain_line)
                 except (requests.RequestException, ValueError):
                     route["elevation"] = None
                 
