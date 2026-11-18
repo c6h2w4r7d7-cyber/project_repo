@@ -12,7 +12,7 @@ from shapely.geometry import LineString
 
 DEFAULT_ROUTER_URL = "https://valhalla1.openstreetmap.de/route"
 PROFILE_URL = "https://api3.geo.admin.ch/rest/services/profile.json"
-TO_LV"95 = Transformer.from_crs(4326, 2056, always_xy=True)
+TO_LV95 = Transformer.from_crs(4326, 2056, always_xy=True)
 ROUTER_LOCK = threading.Lock()
 last_public_request = -math.inf
 
