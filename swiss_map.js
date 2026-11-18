@@ -28,7 +28,14 @@ export default function renderMap({ parentElement, data, setStateValue }) {
     const canvas = parentElement.querySelector(".runcomfy-map");
     const status = parentElement.querySelector(".map-status");
     // Streamlit can invoke the renderer again on the same element after a rerun.
-    canvas.runComfyMapCleanup?.();
+    const dataKey = JSON.stringify(data);
+if (canvas.runComfyMap?.dataKey === dataKey) {
+    canvas.runComfyMap.send = setStateValue;
+    return canvas.runComfyMap.cleanup;
+}
+canvas.runComfyMap?.cleanup();
+const instance = { dataKey, send: setStateValue, cleanup };
+canvas.runComfyMap = instance;
     status.textContent = "Loading swisstopo map…";
     let disposed = false;
     let map;
@@ -93,7 +100,7 @@ export default function renderMap({ parentElement, data, setStateValue }) {
         if (data.selectable) {
             map.on("singleclick", ({ coordinate }) => {
                 const [lng, lat] = ol.proj.toLonLat(coordinate);
-                setStateValue("point", { lat, lng, revision: data.revision });
+                instance.send("point", { lat, lng, revision: data.revision });
             });
         } else if (features.length > 1) {
             map.getView().fit(overlay.getExtent(), { padding: [32, 32, 32, 32], maxZoom: 16 });
@@ -115,11 +122,10 @@ export default function renderMap({ parentElement, data, setStateValue }) {
             map.setTarget(undefined);
             map.dispose();
         }
-        if (canvas.runComfyMapCleanup === cleanup) {
+                if (canvas.runComfyMap === instance) {
             canvas.replaceChildren();
-            delete canvas.runComfyMapCleanup;
+            delete canvas.runComfyMap;
         }
     }
-    canvas.runComfyMapCleanup = cleanup;
     return cleanup;
 }

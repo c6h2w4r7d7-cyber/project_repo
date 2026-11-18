@@ -2,6 +2,8 @@ import streamlit as st
 import requests
 import math
 import os
+import re
+from html import unescape
 from pathlib import Path
 
 from streamlit.errors import StreamlitSecretNotFoundError
@@ -61,6 +63,66 @@ swiss_map = st.components.v2.component(
     isolate_styles=False,
 )
 
+SEARCH_URL = "https://api3.geo.admin.ch/rest/services/ech/SearchServer"
+SEARCH_PARAMS = {
+    "type": "locations",
+    "origins": "address,gg25,gazetteer,zipcode",
+    "limit": 5,
+    "sr": 4326,
+}
+
+swiss_search = st.components.v2.component(
+    "runcomfy_swiss_search",
+    html="""
+        <form class="swiss-location-search" role="search">
+            <label for="swiss-search-input">Enter any Swiss address or location</label>
+            <div class="swiss-search-row">
+                <div class="swiss-search-field">
+                    <input id="swiss-search-input" type="search" role="combobox"
+                        aria-autocomplete="list" aria-expanded="false" aria-controls="swiss-search-list"
+                        autocomplete="off" maxlength="150" placeholder="e.g. Bahnhof Chur, St. Gallen, Zurich">
+                    <ul id="swiss-search-list" role="listbox" aria-label="Swiss locations" hidden></ul>
+                </div>
+                <button type="submit">Search location</button>
+            </div>
+            <div class="swiss-search-status" role="status"></div>
+        </form>
+    """,
+    css="""
+        .swiss-location-search { color: var(--st-text-color, #262730); }
+        .swiss-location-search label { display: block; font-size: .875rem; margin-bottom: .4rem; }
+        .swiss-search-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: start; }
+        .swiss-search-field { position: relative; flex: 1 1 15rem; min-width: 0; }
+        .swiss-location-search input, .swiss-location-search button {
+            min-height: 2.5rem; padding: .45rem .75rem; border-radius: .5rem;
+            border: 1px solid var(--st-border-color, #b8b8bf);
+            background: var(--st-secondary-background-color, #f0f2f6);
+            color: inherit; font: inherit;
+        }
+        .swiss-location-search input { width: 100%; }
+        .swiss-location-search button { cursor: pointer; }
+        .swiss-location-search :focus-visible {
+            outline: 2px solid var(--st-primary-color, #ff4b4b);
+        }
+        .swiss-location-search [role=listbox] {
+            position: absolute; z-index: 20; inset: 100% 0 auto;
+            list-style: none; margin: .2rem 0 0; padding: .25rem;
+            max-height: 15rem; overflow-y: auto;
+            border: 1px solid var(--st-border-color, #b8b8bf); border-radius: .5rem;
+            background: var(--st-background-color, #fff); box-shadow: 0 .3rem .8rem #0002;
+        }
+        .swiss-location-search [role=option] {
+            padding: .45rem .65rem; cursor: pointer; border-radius: .3rem;
+        }
+        .swiss-location-search [role=option]:hover, .swiss-location-search [aria-selected=true] {
+            background: var(--st-secondary-background-color, #f0f2f6);
+            outline: 1px solid var(--st-primary-color, #ff4b4b);
+        }
+        .swiss-search-status { font-size: .875rem; }
+    """,
+    js=Path(__file__).with_name("swiss_search.js").read_text(encoding="utf-8"),
+)
+
 # Scoring limits are unchanged. Warning thresholds are configurable in the UI.
 DEFAULT_START = (47.4245, 9.3767)
 FITNESS_LIMITS = {"Beginner": 10, "Intermediate": 25, "Advanced": 45}
@@ -108,35 +170,86 @@ def set_start(location, source, label):
 # 2. SWISS LOCATION SEARCH
 # ==========================================
 
-@st.cache_data(ttl=86400)
-def search_location(address):
-
+@st.cache_data(ttl=3600, max_entries=512)
+def search_locations(address):
     response = requests.get(
-        "https://api3.geo.admin.ch/rest/services/api/SearchServer",
-        params={
-            "searchText": address,
-            "type": "locations",
-            "origins": "address,gg25,gazetteer",
-            "limit": 5,
-            "sr": 4326
-        },
-        timeout=20
+        SEARCH_URL,
+        params={**SEARCH_PARAMS, "searchText": address},
+        timeout=10,
     )
-
     response.raise_for_status()
 
-    results = response.json().get("results", [])
+    matches = []
+    for result in response.json().get("results", []):
+        attributes = result.get("attrs", {})
+        lat = number(attributes.get("lat"))
+        lon = number(attributes.get("lon"))
+        if lat is None or lon is None:
+            continue
 
-    if not results:
-        return None
+        label = unescape(re.sub(r"<[^>]*>", "", attributes.get("label") or address))
+        matches.append((str(result.get("id")), (lat, lon), " ".join(label.split())))
 
-    attributes = results[0]["attrs"]
+    return matches
 
-    # Coordinates in WGS84
-    lat = float(attributes["lat"])
-    lon = float(attributes["lon"])
 
-    return lat, lon
+def update_location_suggestions():
+    request = st.session_state.swiss_location_search.get("lookup")
+    if not isinstance(request, dict) or not isinstance(request.get("query"), str):
+        return
+
+    query = request["query"].strip()[:150]
+    if len(query) < 2:
+        return
+
+    batch = {"query": query, "id": request.get("id"), "matches": []}
+    try:
+        batch["matches"] = [
+            {"id": match_id, "label": label}
+            for match_id, _, label in search_locations(query)
+        ]
+    except (requests.RequestException, ValueError):
+        batch["error"] = True
+
+    st.session_state.location_suggestions = batch
+
+
+def submit_location_search():
+    submission = st.session_state.swiss_location_search.get("submit")
+    if not isinstance(submission, dict) or not isinstance(submission.get("query"), str):
+        return
+
+    query = submission["query"].strip()[:150]
+    if not query:
+        return
+
+    st.session_state.last_location_query = query
+    st.session_state.location_suggestions = None
+    st.session_state.location_search_message = None
+
+    try:
+        matches = search_locations(query)
+        selection_id = submission.get("selectionId")
+        if selection_id is None:
+            match = next(iter(matches), None)
+        else:
+            match = next((item for item in matches if item[0] == selection_id), None)
+
+        if match:
+            _, location, label = match
+            st.session_state.last_location_query = label
+            set_start(location, "search", label)
+        elif selection_id is not None:
+            st.session_state.location_search_message = (
+                "That suggestion is no longer available. Search again to refresh the matches."
+            )
+        else:
+            st.session_state.location_search_message = "Location not found in Switzerland."
+    except (requests.RequestException, ValueError):
+        st.session_state.location_search_message = (
+            "The Swiss location search is temporarily unavailable. Try again shortly."
+        )
+
 def is_swiss_location(lat, lon):
 
     response = requests.get(
@@ -380,28 +493,18 @@ def preference_warnings(route, preferences):
 
 st.header("📍 Choose your starting point")
 
-address = st.text_input(
-    "Enter any Swiss address or location",
-    placeholder="e.g. Bahnhof Chur, St. Gallen, Zurich"
+swiss_search(
+    key="swiss_location_search",
+    data={
+        "lastQuery": st.session_state.get("last_location_query", ""),
+        "suggestions": st.session_state.get("location_suggestions"),
+    },
+    on_lookup_change=update_location_suggestions,
+    on_submit_change=submit_location_search,
 )
 
-if st.button("🔎 Search location"):
-
-    if address.strip():
-
-        try:
-            location = search_location(address)
-
-            if location:
-                set_start(location, "search", f"Search result for: {address.strip()}")
-                st.rerun()
-
-            else:
-                st.warning("Location not found in Switzerland.")
-
-        except Exception as error:
-            st.error(f"Location search failed: {error}")
-
+if search_message := st.session_state.get("location_search_message"):
+    st.warning(search_message)
 
 lat, lon = st.session_state.start
 
