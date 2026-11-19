@@ -157,14 +157,42 @@ export default function renderMap({ parentElement, data, setStateValue }) {
             routes.clear();
 
             const visible = routeView ? [options[routeView - 1]] : options;
+            let invalidRoute = false;
+
             for (const [index, route] of visible.entries()) {
+                const points = route?.path;
+
+                if (
+                    !Array.isArray(points) ||
+                    points.length < 2 ||
+                    !points.every(
+                        (point) =>
+                            Array.isArray(point) &&
+                            point.length >= 2 &&
+                            Number.isFinite(point[0]) &&
+                            Number.isFinite(point[1]) &&
+                            point[0] >= -180 &&
+                            point[0] <= 180 &&
+                            point[1] >= -90 &&
+                            point[1] <= 90,
+                    )
+                ) {
+                    console.error("Invalid route coordinates; route was not drawn:", {
+                        label: route?.label,
+                        pointCount: Array.isArray(points) ? points.length : null,
+                        firstPoint: points?.[0],
+                    });
+                    invalidRoute = true;
+                    continue;
+                }
+
                 const path = new ol.geom.LineString(
-                    route.path.map((point) => ol.proj.fromLonLat(point)),
+                    points.map(([lng, lat]) => ol.proj.fromLonLat([lng, lat])),
                 );
-                const feature = new ol.Feature({
-                    geometry: path,
-                    label: route.label,
-                });
+                const feature = new ol.Feature();
+                feature.setGeometry(path);
+                feature.set("label", route.label);
+
                 const zIndex = (visible.length - index) * 2;
                 feature.setStyle([
                     new ol.style.Style({
@@ -183,7 +211,7 @@ export default function renderMap({ parentElement, data, setStateValue }) {
             }
 
             const view = map.getView();
-            if (visible.length) {
+            if (routes.getFeatures().length) {
                 const extent = ol.extent.extendCoordinate(
                     routes.getExtent(),
                     start,
@@ -197,7 +225,10 @@ export default function renderMap({ parentElement, data, setStateValue }) {
                 view.setZoom(14);
             }
 
-            if (tileLoaded) {
+            if (invalidRoute) {
+                status.textContent =
+                    "A generated route has invalid coordinates and could not be drawn.";
+            } else if (tileLoaded) {
                 status.textContent = routeView ? visible[0].label : "";
             }
         };
