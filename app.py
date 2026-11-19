@@ -647,20 +647,7 @@ if st.button(
                 ):
                     continue
 
-                try:
-                    line = swiss_services.project_route(route["coordinates"])
-                    is_loop = swiss_services.is_running_loop(
-                        line,
-                        lat,
-                        lon,
-                        distance,
-                    )
-                except (TypeError, ValueError):
-                    is_loop = False
-
-                if not is_loop:
-                    continue
-
+                # get_running_route rejects open or retraced paths.
                 candidates.append(route)
 
             if not candidates:
@@ -838,9 +825,7 @@ with map_container:
             and selected_lon is not None
             and 5.8 <= selected_lon <= 10.7
         ):
-            st.write(
-                f"Selected: {selected_lat:.5f}, {selected_lon:.5f}"
-            )
+            st.write(f"Selected: {selected_lat:.5f}, {selected_lon:.5f}")
             if st.button("📍 Confirm starting point"):
                 try:
                     if is_swiss_location(selected_lat, selected_lon):
@@ -913,7 +898,6 @@ if st.session_state.routes:
     st.header("🌤️ Current running conditions")
 
     c1, c2, c3, c4 = st.columns(4)
-
     c1.metric("Temperature", metric_text(weather.get("temperature_2m"), " °C"))
     c2.metric("Feels like", metric_text(weather.get("apparent_temperature"), " °C"))
     c3.metric("Air Quality Index", metric_text(air.get("european_aqi")))
