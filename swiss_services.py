@@ -8,6 +8,7 @@ import time
 import requests
 from pyproj import Transformer
 from shapely.geometry import LineString, Point
+from shapely.ops import unary_union
 
 
 DEFAULT_ROUTER_URL = "https://valhalla1.openstreetmap.de/route"
@@ -59,24 +60,43 @@ def loop_waypoints(distance, attempt, previous_distance=None):
 
 
 def is_running_loop(line, lat, lon, distance):
-    # Check that both ends are near the selected start and meet on the same path.
+    if line.is_empty or line.length <= 0:
+        return False
+
+    coordinates = list(line.coords)
+    if len(coordinates) < 4:
+        return False
+
     start = Point(TO_LV95.transform(lon, lat, errcheck=True))
-    first = Point(line.coords[0])
-    last = Point(line.coords[-1])
-    if first.distance(last) > 5 or max(first.distance(start), last.distance(start)) > 120:
+    first = Point(coordinates[0])
+    last = Point(coordinates[-1])
+
+    if first.distance(last) > 5 or max(
+        first.distance(start), last.distance(start)
+    ) > 120:
         return False
 
-    # Skip routes that stray too far for the requested distance.
-    if max(math.hypot(x - start.x, y - start.y) for x, y in line.coords) > distance * 400:
+    if max(
+        math.hypot(x - start.x, y - start.y)
+        for x, y in coordinates
+    ) > distance * 400:
         return False
 
-    # Count overlapping stretches once, then reject routes that retrace too much.
-    unique_length = line.union(line).length
-    if unique_length < 0.82 * line.length:
+    segments = [
+        LineString((a, b))
+        for a, b in zip(coordinates, coordinates[1:])
+        if a != b
+    ]
+    if not segments:
         return False
 
-    # A loop needs some spread, even when its paths only run close in parallel.
-    return line.convex_hull.area >= 0.08 * unique_length**2 / (4 * math.pi)
+    unique_length = unary_union(segments).length
+    if unique_length < 0.99 * line.length:
+        return False
+
+    return line.convex_hull.area >= (
+        0.08 * unique_length**2 / (4 * math.pi)
+    )
 
 
 def get_running_route(router_url, lat, lon, distance, attempt, previous_distance=None):

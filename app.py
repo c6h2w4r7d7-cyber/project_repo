@@ -569,49 +569,124 @@ if st.button("🚀 Find my perfect running route", disabled=not thresholds_valid
 
         try:
 
-            # Try several directions and adjust the waypoint radius on the second pass.
+                        # Gather distinct closed-loop candidates. Keep warning-only
+            # mismatches as fallbacks, but prioritize candidates within limits.
             st.session_state.routes = []
             routes = []
             first_pass_distances = {}
             errors = []
-            matches = 0
-            tolerance = distance * distance_tolerance_pct / 100
+            elevation_unavailable = 0
+
             for attempt in range(8):
                 try:
                     route = cached_running_route(
-                        ROUTER_URL, lat, lon, distance, attempt, first_pass_distances.get(attempt % 4)
+                        ROUTER_URL,
+                        lat,
+                        lon,
+                        distance,
+                        attempt,
+                        first_pass_distances.get(attempt % 4),
                     )
                 except swiss_services.RoutingUnavailable as error:
                     errors.append(str(error))
                     break
                 except (requests.RequestException, ValueError):
-                    errors.append("The pedestrian routing service could not complete the request.")
+                    errors.append(
+                        "The pedestrian routing service could not complete the request."
+                    )
                     if len(errors) == 2:
                         break
                     continue
 
                 if route is None:
                     continue
+
                 if attempt < 4:
                     first_pass_distances[attempt] = route["distance"]
 
-                # Keep the preference warning useful, but skip large distance mismatches.
-                if abs(route["distance"] - distance) > distance * 0.35 or any(
-                    route["coordinates"] in (existing["coordinates"], existing["coordinates"][::-1])
+                if any(
+                    route["coordinates"] in (
+                        existing["coordinates"],
+                        existing["coordinates"][::-1],
+                    )
                     for existing in routes
                 ):
                     continue
+
+                try:
+                    terrain_line = swiss_services.project_route(
+                        route["coordinates"]
+                    )
+                    elevation = swiss_services.get_elevation_gain(terrain_line)
+                except (requests.RequestException, ValueError):
+                    elevation = None
+
+                # Do not recommend routes when elevation limits cannot be checked.
+                if elevation is None:
+                    elevation_unavailable += 1
+                    continue
+
+                route["elevation"] = elevation
+                route["preference_warnings"] = preference_warnings(
+                    route, preferences
+                )
                 routes.append(route)
-                if abs(route["distance"] - distance) <= tolerance + 1e-9:
-                    matches += 1
-                    if matches == 3:
-                        break
+
+                # Stop early once there are three candidates satisfying all limits.
+                if sum(
+                    not candidate["preference_warnings"]
+                    for candidate in routes
+                ) >= 3:
+                    break
 
             if not routes:
+                if elevation_unavailable:
+                    raise swiss_services.RoutingUnavailable(
+                        "Candidate loops were found, but elevation could not be verified. "
+                        "Those routes were not recommended."
+                    )
                 raise swiss_services.RoutingUnavailable(
                     errors[-1] if errors else
-                    "No suitable running loop found. Try another starting point or distance."
+                    "No distinct, non-retraced running loop found. "
+                    "Try another starting point or distance."
                 )
+
+            try:
+                weather = get_weather(lat, lon)
+            except (requests.RequestException, ValueError, KeyError):
+                weather = {}
+            try:
+                air = get_air_quality(lat, lon)
+            except (requests.RequestException, ValueError, KeyError):
+                air = {}
+
+            temperature = swiss_services.number(weather.get("temperature_2m"))
+            aqi = swiss_services.number(air.get("european_aqi"))
+
+            for route in routes:
+                route["score_breakdown"] = calculate_score(
+                    route,
+                    distance,
+                    fitness,
+                    hill_preference,
+                    temperature,
+                    aqi,
+                    return_breakdown=True,
+                )
+                route["score"] = route["score_breakdown"]["score"]
+
+            routes.sort(
+                key=lambda route: (
+                    len(route["preference_warnings"]),
+                    -(
+                        route["score"]
+                        if route["score"] is not None
+                        else -1
+                    ),
+                    abs(route["distance"] - distance),
+                )
+            )
+            routes = routes[:3]
 
             # Score the three loops closest to the requested distance.
             routes.sort(key=lambda route: abs(route["distance"] - distance))
