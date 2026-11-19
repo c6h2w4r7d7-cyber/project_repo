@@ -207,6 +207,12 @@ export default function renderMap({ parentElement, data, setStateValue }) {
                         zIndex: zIndex + 1,
                     }),
                 ]);
+                const geometry = feature.getGeometry();
+                console.log("route geometry diagnostic", {
+                type: geometry?.getType?.(),
+                simplifier: typeof geometry?.getSimplifiedGeometry,
+                pointCount: geometry?.getCoordinates?.().length,
+                });
                 routes.addFeature(feature);
             }
 
