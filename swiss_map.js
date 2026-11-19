@@ -21,6 +21,7 @@ function loadOpenLayers() {
         script.onerror = reject;
         document.head.append(script);
     });
+
     return window.runComfyOpenLayers;
 }
 
@@ -207,21 +208,13 @@ export default function renderMap({ parentElement, data, setStateValue }) {
                         zIndex: zIndex + 1,
                     }),
                 ]);
-                const geometry = feature.getGeometry();
-                console.log("route geometry diagnostic", {
-                type: geometry?.getType?.(),
-                simplifier: typeof geometry?.getSimplifiedGeometry,
-                pointCount: geometry?.getCoordinates?.().length,
-                });
                 routes.addFeature(feature);
             }
 
             const view = map.getView();
             if (routes.getFeatures().length) {
-                const extent = ol.extent.extendCoordinate(
-                    routes.getExtent(),
-                    start,
-                );
+                const extent = routes.getExtent();
+                ol.extent.extendCoordinate(extent, start);
                 view.fit(extent, {
                     padding: [36, 36, 36, 36],
                     maxZoom: 16,
