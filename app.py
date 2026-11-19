@@ -762,7 +762,8 @@ if st.session_state.routes:
         st.caption(
             f"Generated for {saved_preferences['distance']:g} km · {saved_preferences['fitness']} · "
             f"Warning thresholds: distance ±{saved_preferences['distance_tolerance_pct']:g}%; "
-            f"elevation {saved_preferences['elevation_min']:g}–{saved_preferences['elevation_max']:g} m/km."        )
+            f"elevation {saved_preferences['elevation_min']:g}–{saved_preferences['elevation_max']:g} m/km."
+        )
 
     st.header("🌤️ Current running conditions")
 
@@ -871,5 +872,3 @@ if st.session_state.routes:
         "Maps and elevation: © swisstopo. Routing: Valhalla, © OpenStreetMap contributors. "
         "Weather and air quality: Open-Meteo."        "Weather and air quality: Open-Meteo."
     )
-
-
