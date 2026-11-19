@@ -7,7 +7,7 @@ import time
 
 import requests
 from pyproj import Transformer
-from shapely.geometry import LineString
+from shapely.geometry import LineString, Point
 
 
 DEFAULT_ROUTER_URL = "https://valhalla1.openstreetmap.de/route"
@@ -58,16 +58,37 @@ def loop_waypoints(distance, attempt, previous_distance=None):
     return distance * 0.27 * scale, bearing
 
 
+def is_running_loop(line, lat, lon, distance):
+    # Check that both ends are near the selected start and meet on the same path.
+    start = Point(TO_LV95.transform(lon, lat, errcheck=True))
+    first = Point(line.coords[0])
+    last = Point(line.coords[-1])
+    if first.distance(last) > 5 or max(first.distance(start), last.distance(start)) > 120:
+        return False
+
+    # Skip routes that stray too far for the requested distance.
+    if max(math.hypot(x - start.x, y - start.y) for x, y in line.coords) > distance * 400:
+        return False
+
+    # Count overlapping stretches once, then reject routes that retrace too much.
+    unique_length = line.union(line).length
+    if unique_length < 0.82 * line.length:
+        return False
+
+    # A loop needs some spread, even when its paths only run close in parallel.
+    return line.convex_hull.area >= 0.08 * unique_length**2 / (4 * math.pi)
+
+
 def get_running_route(router_url, lat, lon, distance, attempt, previous_distance=None):
+    # Ask the pedestrian router to visit two waypoints and return to the start.
     radius, bearing = loop_waypoints(distance, attempt, previous_distance)
-    start = {"lat": lat, "lon": lon}
+    start = {"lat": lat, "lon": lon, "search_cutoff": 120}
+    waypoints = [
+        {**waypoint_at_bearing(lat, lon, radius, angle), "type": "through", "search_cutoff": 400}
+        for angle in (bearing, bearing + 60)
+    ]
     payload = {
-        "locations": [
-            start,
-            waypoint_at_bearing(lat, lon, radius, bearing),
-            waypoint_at_bearing(lat, lon, radius, bearing + 60),
-            start,
-        ],
+        "locations": [start, *waypoints, start],
         "costing": "pedestrian",
         "costing_options": {"pedestrian": {"use_ferry": 0, "max_hiking_difficulty": 1}},
         "format": "osrm",
@@ -97,10 +118,14 @@ def get_running_route(router_url, lat, lon, distance, attempt, previous_distance
     if result.get("code") in ("NoRoute", "NoSegment") or result.get("error_code") in (170, 171, 442, 443):
         return None
     response.raise_for_status()
+    # Return only usable loops drawn from the routing service's geometry.
     for route in result.get("routes", []):
         coordinates = route.get("geometry", {}).get("coordinates", [])
         distance_m = number(route.get("distance"))
-        if len(coordinates) >= 3 and distance_m is not None and distance_m > 0:
+        if len(coordinates) < 4 or distance_m is None or distance_m <= 0:
+            continue
+        line = project_route(coordinates)
+        if is_running_loop(line, lat, lon, distance):
             return {"coordinates": coordinates, "distance": distance_m / 1000}
     return None
 
@@ -136,6 +161,4 @@ def get_elevation_gain(line):
     if len(heights) < 2 or any(height is None or height < -100 for height in heights):
         return None
     return round(sum(max(0, b - a) for a, b in zip(heights, heights[1:])))
-
-
 

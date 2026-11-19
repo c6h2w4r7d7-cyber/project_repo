@@ -64,6 +64,7 @@ export default function renderSwissSearch({ parentElement, data, setTriggerValue
         status.textContent = "";
         if (selection) input.value = selection.label;
 
+        // Pass the chosen match, or the typed query, to Python to update the start.
         send("submit", { query, selectionId: selection?.id ?? null });
     }
 
@@ -77,6 +78,7 @@ export default function renderSwissSearch({ parentElement, data, setTriggerValue
         const query = input.value.trim();
         if (query.length < 2) return;
 
+        // Wait for a pause in typing before requesting suggestions.
         timer = setTimeout(() => {
             pending = { query, id: ++nextId };
             status.textContent = "Looking for Swiss locations…";
@@ -87,6 +89,7 @@ export default function renderSwissSearch({ parentElement, data, setTriggerValue
     function update(nextData, nextSender) {
         send = nextSender;
         const result = nextData.suggestions;
+        // Ignore older results after the user changes the search text.
         if (!pending || !result || result.id !== pending.id || result.query !== pending.query) return;
         if (input.value.trim() !== pending.query) return;
         pending = undefined;

@@ -151,6 +151,7 @@ if "start_revision" not in st.session_state:
 
 
 def set_start(location, source, label):
+    # Move the start marker and discard routes calculated for the previous location.
     st.session_state.start = location
     st.session_state.start_source = source
     st.session_state.start_label = label
@@ -486,33 +487,8 @@ st.caption(f"Latitude {lat:.5f}, longitude {lon:.5f}")
 if st.session_state.start_source == "default":
     st.info("Using the default starting location: St. Gallen. Search or confirm a point on the map to change it.")
 
-st.write("Or select your starting point on the map:")
-picker = swiss_map(
-    key="start_location_map",
-    data={
-        "center": {"lat": lat, "lng": lon},
-        "revision": st.session_state.start_revision,
-        "selectable": True,
-    },
-    default={"point": None},
-    on_point_change=lambda: None,
-)
-clicked = picker.point
-if isinstance(clicked, dict) and clicked.get("revision") == st.session_state.start_revision:
-    selected_lat = swiss_services.number(clicked.get("lat"))
-    selected_lon = swiss_services.number(clicked.get("lng"))
-    if (selected_lat is not None and 45.7 <= selected_lat <= 47.9
-            and selected_lon is not None and 5.8 <= selected_lon <= 10.7):
-        st.write(f"Selected: {selected_lat:.5f}, {selected_lon:.5f}")
-        if st.button("📍 Confirm starting point"):
-            try:
-                if is_swiss_location(selected_lat, selected_lon):
-                    set_start((selected_lat, selected_lon), "map", "Confirmed map location")
-                    st.rerun()
-                else:
-                    st.warning("Please choose a location in Switzerland.")
-            except (requests.RequestException, ValueError) as error:
-                st.error(f"Location check failed: {error}")
+# Reserve one map near the location controls and draw it after route generation.
+map_container = st.container()
 
 
 # ==========================================
@@ -593,6 +569,8 @@ if st.button("🚀 Find my perfect running route", disabled=not thresholds_valid
 
         try:
 
+            # Try several directions and adjust the waypoint radius on the second pass.
+            st.session_state.routes = []
             routes = []
             first_pass_distances = {}
             errors = []
@@ -612,7 +590,13 @@ if st.button("🚀 Find my perfect running route", disabled=not thresholds_valid
                         break
                     continue
 
-                if route is None or any(
+                if route is None:
+                    continue
+                if attempt < 4:
+                    first_pass_distances[attempt] = route["distance"]
+
+                # Keep the preference warning useful, but skip large distance mismatches.
+                if abs(route["distance"] - distance) > distance * 0.35 or any(
                     route["coordinates"] in (existing["coordinates"], existing["coordinates"][::-1])
                     for existing in routes
                 ):
@@ -622,16 +606,14 @@ if st.button("🚀 Find my perfect running route", disabled=not thresholds_valid
                     matches += 1
                     if matches == 3:
                         break
-                elif attempt < 4:
-                    first_pass_distances[attempt] = route["distance"]
 
             if not routes:
-                if errors:
-                    st.error(errors[-1])
-                else:
-                    st.error("No running routes found. Try another location or distance.")
-                st.stop()
+                raise swiss_services.RoutingUnavailable(
+                    errors[-1] if errors else
+                    "No suitable running loop found. Try another starting point or distance."
+                )
 
+            # Score the three loops closest to the requested distance.
             routes.sort(key=lambda route: abs(route["distance"] - distance))
             routes = routes[:3]
             try:
@@ -670,8 +652,9 @@ if st.button("🚀 Find my perfect running route", disabled=not thresholds_valid
                 reverse=True
             )
 
-            # Save results
+            # Save the results and the settings used to calculate them.
             st.session_state.routes = routes
+            st.session_state.route_view = 0
             st.session_state.result_preferences = preferences.copy()
             st.session_state.result_start = tuple(st.session_state.start)
             st.session_state.result_start_label = st.session_state.start_label
@@ -680,9 +663,76 @@ if st.button("🚀 Find my perfect running route", disabled=not thresholds_valid
             st.session_state.weather = weather
             st.session_state.air = air
 
+        except swiss_services.RoutingUnavailable as error:
+            st.error(str(error))
         except Exception as error:
 
             st.error(f"An error occurred: {error}")
+
+
+with map_container:
+    # Use the same map for the selected start, a pending point and the generated loops.
+    route_colors = ("#087f5b", "#1554c4", "#8c239e")
+    map_routes = [
+        {
+            "path": [point[:2] for point in route["coordinates"]],
+            "color": route_colors[i],
+            "label": f"Route {i + 1} · {metric_text(route.get('distance'), ' km')}",
+        }
+        for i, route in enumerate(st.session_state.routes)
+    ]
+    route_view = 0
+    if map_routes:
+        route_view = st.selectbox(
+            "Show running routes on the map",
+            range(len(map_routes) + 1),
+            format_func=lambda index: map_routes[index - 1]["label"] if index else "All routes",
+            key="route_view",
+        )
+        st.caption("Click a route to see its label. To choose a new start, click elsewhere on the map or enable the option below.")
+        pick_on_route = st.checkbox("Pick a new starting point", key="pick_on_route")
+    else:
+        pick_on_route = True
+        st.caption("Click the map to choose a starting point.")
+
+    revision = st.session_state.start_revision
+    previous_map_state = st.session_state.get("shared_swiss_map") or {}
+    pending = previous_map_state.get("point")
+    if not isinstance(pending, dict) or pending.get("revision") != revision:
+        pending = None
+
+    picker = swiss_map(
+        key="shared_swiss_map",
+        data={
+            "center": {"lat": lat, "lng": lon},
+            "revision": revision,
+            "pending": pending,
+            "routes": map_routes,
+            "routeView": route_view,
+            "pickOnRoute": pick_on_route,
+        },
+        default={"point": None},
+        on_point_change=lambda: None,
+    )
+    clicked = picker.point
+    # Make the clicked point the new start only after confirmation and a country check.
+    if isinstance(clicked, dict) and clicked.get("revision") == revision:
+        selected_lat = swiss_services.number(clicked.get("lat"))
+        selected_lon = swiss_services.number(clicked.get("lng"))
+        if (selected_lat is not None and 45.7 <= selected_lat <= 47.9
+                and selected_lon is not None and 5.8 <= selected_lon <= 10.7):
+            st.write(f"Selected: {selected_lat:.5f}, {selected_lon:.5f}")
+            if st.button("📍 Confirm starting point"):
+                try:
+                    if is_swiss_location(selected_lat, selected_lon):
+                        set_start((selected_lat, selected_lon), "map", "Confirmed map location")
+                        st.rerun()
+                    else:
+                        st.warning("Please choose a location in Switzerland.")
+                except (requests.RequestException, ValueError) as error:
+                    st.error(f"Location check failed: {error}")
+        else:
+            st.warning("Please choose a location in Switzerland.")
 
 
 # ==========================================
@@ -741,31 +791,6 @@ if st.session_state.routes:
     st.write(
         f"🌧️ Current precipitation: "
         f"{metric_text(weather.get('precipitation'), ' mm')}"
-    )
-
-    # ======================================
-    # ROUTE MAP
-    # ======================================
-
-    st.header("🗺️ Your running routes")
-
-    route_colors = ("#117648", "#1464c5", "#753bb5")
-    swiss_map(
-        key="running_routes_map",
-        data={
-            "center": {"lat": lat, "lng": lon},
-            "routes": [
-                {
-                    "path": [point[:2] for point in route["coordinates"]],
-                    "color": route_colors[i],
-                    "label": (
-                        f"Route {i + 1} | {metric_text(route.get('distance'), ' km')} | "
-                        f"Score {metric_text(route.get('score'), '/100', 0)}"
-                    ),
-                }
-                for i, route in enumerate(routes)
-            ],
-        },
     )
 
     # ======================================
@@ -846,4 +871,5 @@ if st.session_state.routes:
         "Maps and elevation: © swisstopo. Routing: Valhalla, © OpenStreetMap contributors. "
         "Weather and air quality: Open-Meteo."        "Weather and air quality: Open-Meteo."
     )
+
 
