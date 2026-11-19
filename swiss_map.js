@@ -74,6 +74,11 @@ export default function renderMap({ parentElement, data, setStateValue }) {
             maxZoom: 18,
             wrapX: false,
         });
+
+         const project = ({ lng, lat }) => ol.proj.fromLonLat([lng, lat]);
++        marker.setGeometry(new ol.geom.Point(project(currentData.center)));
++        markers.addFeature(marker);
+
         source.on("tileloadend", () => {
             if (!disposed && !tileLoaded) status.textContent = "";
             tileLoaded = true;
