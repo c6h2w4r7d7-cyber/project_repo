@@ -9,6 +9,7 @@ from pathlib import Path
 from streamlit.errors import StreamlitSecretNotFoundError
 
 import swiss_services
+import ml_recommender
 
 
 # ==========================================
@@ -534,11 +535,22 @@ with col1:
         value=5,
     )
 
+
 with col2:
     hill_preference = st.selectbox(
         "Elevation preference",
         ["Flat", "Moderate", "Hilly"],
     )
+
+# --- ML-Kriterien: Schuhwerk, Belag & Tageszeit ---
+st.subheader("👟 Gear & conditions (AI Preference Learning)")
+ml_col1, ml_col2, ml_col3 = st.columns(3)
+with ml_col1:
+    shoe_type = st.selectbox("Your running shoes", ["Road", "Trail", "Cushioned"])
+with ml_col2:
+    preferred_surface = st.selectbox("Preferred surface", ["Asphalt", "Gravel", "Trail"])
+with ml_col3:
+    time_of_day = st.selectbox("Time of day", ["Morning", "Afternoon", "Evening"])
 
 
 # ==========================================
@@ -966,7 +978,42 @@ if st.session_state.routes:
                     "temperature, wind and precipitation are displayed but do "
                     "not affect this score."
                 )
+        # --- Machine Learning Match & Feedback Loop ---
+        dist_val = swiss_services.number(route.get("distance")) or 5.0
+        elev_val = swiss_services.number(route.get("elevation")) or 0.0
+        gain_per_km = elev_val / max(dist_val, 0.1)
+        precip = swiss_services.number(weather.get("precipitation")) or 0.0
+        weather_cond = "Wet/Rain" if precip > 0.2 else "Dry"
 
+        match_pct, learned_runs = ml_recommender.predict_match_probability(
+            shoe=shoe_type,
+            surface=preferred_surface,
+            weather_cond=weather_cond,
+            time_of_day=time_of_day,
+            gain_per_km=gain_per_km,
+        )
+
+        st.info(
+            f"🤖 **AI Gear & Route Match:** **{match_pct}%** "
+            f"(trained on {learned_runs} runs · Weather: {weather_cond}, "
+            f"Shoe: {shoe_type}, Surface: {preferred_surface}, Time: {time_of_day})"
+        )
+
+        fb_col1, fb_col2, _ = st.columns([1, 1, 3])
+        with fb_col1:
+            if st.button("👍 Optimal for me", key=f"like_route_{i}"):
+                ml_recommender.log_feedback(
+                    shoe_type, preferred_surface, weather_cond, time_of_day, gain_per_km, 1
+                )
+                st.toast("Saved! AI learned that this setup works great for you.")
+                st.rerun()
+        with fb_col2:
+            if st.button("👎 Not ideal", key=f"dislike_route_{i}"):
+                ml_recommender.log_feedback(
+                    shoe_type, preferred_surface, weather_cond, time_of_day, gain_per_km, 0
+                )
+                st.toast("Saved! AI will adjust future recommendations.")
+                st.rerun()
         if i == 0:
             st.success("⭐ Best matching running route!")
 

@@ -2,3 +2,5 @@ streamlit>=1.51
 requests
 shapely
 pyproj
+pandas
+scikit-learn

@@ -1,0 +1,17 @@
+shoe,surface,weather_cond,time_of_day,gain_per_km,liked
+Road,Asphalt,Dry,Morning,8.0,1
+Road,Asphalt,Dry,Evening,10.0,1
+Road,Asphalt,Wet/Rain,Afternoon,5.0,1
+Road,Trail,Wet/Rain,Morning,35.0,0
+Road,Trail,Dry,Afternoon,40.0,0
+Road,Gravel,Wet/Rain,Evening,25.0,0
+Trail,Trail,Wet/Rain,Morning,35.0,1
+Trail,Trail,Dry,Afternoon,45.0,1
+Trail,Gravel,Wet/Rain,Morning,20.0,1
+Trail,Asphalt,Dry,Evening,5.0,0
+Cushioned,Asphalt,Dry,Morning,12.0,1
+Cushioned,Gravel,Dry,Afternoon,18.0,1
+Cushioned,Trail,Wet/Rain,Evening,38.0,0
+Road,Asphalt,Dry,Evening,25.3,1
+Road,Asphalt,Dry,Evening,30.8,0
+Road,Asphalt,Dry,Evening,35.1,1
