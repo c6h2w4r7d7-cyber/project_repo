@@ -9,6 +9,7 @@ from pathlib import Path
 from streamlit.errors import StreamlitSecretNotFoundError
 
 import swiss_services
+import runtime_model
 
 
 # ==========================================
@@ -595,7 +596,77 @@ if not thresholds_valid:
 
 
 # ==========================================
-# 11. GENERATE RUNNING ROUTES
+# 11. YOUR RUNNING LOG (MACHINE LEARNING)
+# ==========================================
+# Generated with the assistance of Claude (Anthropic, Claude Opus 5.5, 2026).
+
+st.header("⏱️ Your running log")
+st.caption(
+    "Log your past runs, e.g. from your watch or Strava. A linear regression "
+    "learns your personal pace from them and estimates how long each route "
+    "will take you."
+)
+
+# Every runner gets their own model, trained only on their own runs.
+runner = st.text_input("Your name", value="Me", max_chars=40).strip() or "Me"
+
+with st.expander("📒 Log a past run"):
+    with st.form("log_run", clear_on_submit=True):
+        log1, log2, log3 = st.columns(3)
+        run_km = log1.number_input(
+            "Distance (km)", min_value=0.5, max_value=100.0, value=5.0, step=0.1
+        )
+        run_gain = log2.number_input(
+            "Elevation gain (m)", min_value=0, max_value=5000, value=50, step=10
+        )
+        run_time = log3.number_input(
+            "Time (min)", min_value=1.0, max_value=900.0, value=30.0, step=0.5
+        )
+        if st.form_submit_button("Save run"):
+            runtime_model.log_run(runner, run_km, run_gain, run_time)
+            st.success(f"Run saved for {runner}.")
+
+# Train on this runner's runs. This happens on every page load, so a newly
+# saved run is included immediately.
+my_runs = runtime_model.load_runs(runner)
+time_model = runtime_model.train_model(my_runs)
+
+if time_model is None:
+    st.info(
+        f"{runner} has logged {len(my_runs)} run(s). Log at least "
+        f"{runtime_model.MIN_RUNS} runs to get a time estimate for each route."
+    )
+else:
+    # The learned formula: minutes per km, per 100 m of climbing, and a constant.
+    per_km, per_meter = time_model.coef_
+    st.write(
+        f"**Your learned pace** (from {len(my_runs)} runs): "
+        f"time ≈ {per_km:.1f} min per km + {per_meter * 100:.1f} min per 100 m "
+        f"climbing {time_model.intercept_:+.1f} min"
+    )
+
+    error = runtime_model.test_error(my_runs)
+    st.caption(
+        f"Average error on runs the model did not see: ±{error:.1f} min."
+        if error is not None
+        else f"Log {runtime_model.MIN_RUNS_FOR_TEST} runs to measure how accurate "
+        "the model is."
+    )
+
+    # Real times next to the model's estimates for the same runs.
+    st.scatter_chart(
+        runtime_model.chart_table(time_model, my_runs),
+        x="distance_km",
+        y="time_min",
+        color="series",
+        size="elevation_gain_m",
+        x_label="Distance (km)",
+        y_label="Time (min)",
+    )
+
+
+# ==========================================
+# 12. GENERATE RUNNING ROUTES
 # ==========================================
 
 if st.button(
@@ -754,7 +825,7 @@ if st.button(
 
 
 # ==========================================
-# 12. MAP
+# 13. MAP
 # ==========================================
 
 with map_container:
@@ -844,7 +915,7 @@ with map_container:
 
 
 # ==========================================
-# 13. DISPLAY RESULTS
+# 14. DISPLAY RESULTS
 # ==========================================
 
 if st.session_state.routes:
@@ -915,10 +986,23 @@ if st.session_state.routes:
     for i, route in enumerate(routes):
         st.subheader(f"{medals[i]} Route {i + 1}")
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         col1.metric("Distance", metric_text(route.get("distance"), " km"))
         col2.metric("Elevation gain", metric_text(route.get("elevation"), " m", 0))
         col3.metric("RunComfy Score", metric_text(route.get("score"), "/100", 0))
+
+        # Personal time estimate from the running-log model (section 11).
+        route_km = swiss_services.number(route.get("distance"))
+        route_gain = swiss_services.number(route.get("elevation"))
+        col4.metric(
+            "⏱️ Your estimated time",
+            (
+                f"{runtime_model.predict_minutes(time_model, route_km, route_gain):.0f} min"
+                if time_model is not None and route_km is not None and route_gain is not None
+                else "Log runs first"
+            ),
+            help=f"Learned from {runner}'s logged runs (see Your running log).",
+        )
 
         for message in route.get("preference_warnings", []):
             st.warning(message)
@@ -974,7 +1058,8 @@ if st.session_state.routes:
 
     st.caption(
         "RunComfy AI uses real routing, weather and air-quality data. "
-        "Scores are rule-based."
+        "Scores are rule-based. Time estimates come from a linear regression "
+        "trained on your logged runs."
     )
     st.caption(
         "Maps and elevation: © swisstopo. Routing: Valhalla, "
