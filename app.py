@@ -608,7 +608,16 @@ st.caption(
 )
 
 # Every runner gets their own model, trained only on their own runs.
-runner = st.text_input("Your name", value="Me", max_chars=40).strip() or "Me"
+name_col, time_col = st.columns(2)
+runner = name_col.text_input("Your name", value="Me", max_chars=40).strip() or "Me"
+time_available = time_col.number_input(
+    "Time available for your run (min)",
+    min_value=0,
+    max_value=600,
+    value=0,
+    step=5,
+    help="Optional. 0 means no limit. Routes that take longer get a warning.",
+)
 
 with st.expander("📒 Log a past run"):
     with st.form("log_run", clear_on_submit=True):
@@ -630,6 +639,7 @@ with st.expander("📒 Log a past run"):
 # saved run is included immediately.
 my_runs = runtime_model.load_runs(runner)
 time_model = runtime_model.train_model(my_runs)
+model_error = runtime_model.test_error(my_runs)  # None until there are enough runs
 
 if time_model is None:
     st.info(
@@ -645,13 +655,30 @@ else:
         f"climbing {time_model.intercept_:+.1f} min"
     )
 
-    error = runtime_model.test_error(my_runs)
-    st.caption(
-        f"Average error on runs the model did not see: ±{error:.1f} min."
-        if error is not None
-        else f"Log {runtime_model.MIN_RUNS_FOR_TEST} runs to measure how accurate "
-        "the model is."
-    )
+    if model_error is None:
+        st.caption(
+            f"Log {runtime_model.MIN_RUNS_FOR_TEST} runs to measure how accurate "
+            "the model is."
+        )
+    else:
+        # Is the model worth it? Compare it with a constant-pace baseline,
+        # both tested on runs they did not see (cross-validation).
+        baseline_error = runtime_model.test_error(
+            my_runs, runtime_model.BASELINE_FEATURES
+        )
+        e1, e2 = st.columns(2)
+        e1.metric(
+            "Baseline: constant pace",
+            f"±{baseline_error:.1f} min",
+            help="Average error of a model that only uses the distance.",
+        )
+        e2.metric(
+            "Your model: pace + climbing",
+            f"±{model_error:.1f} min",
+            delta=f"{model_error - baseline_error:+.1f} min vs. baseline",
+            delta_color="inverse",  # a smaller error is better, so show it green
+            help="Average error on runs the model did not see during training.",
+        )
 
     # Real times next to the model's estimates for the same runs.
     st.scatter_chart(
@@ -663,6 +690,18 @@ else:
         x_label="Distance (km)",
         y_label="Time (min)",
     )
+
+    # Does the model get better with more data?
+    curve = runtime_model.learning_curve(my_runs)
+    if len(curve) >= 2:
+        st.write("**Learning curve:** does the model improve with more runs?")
+        st.line_chart(
+            curve,
+            x="runs",
+            y="error_min",
+            x_label="Number of logged runs",
+            y_label="Average error (min)",
+        )
 
 
 # ==========================================
@@ -994,18 +1033,37 @@ if st.session_state.routes:
         # Personal time estimate from the running-log model (section 11).
         route_km = swiss_services.number(route.get("distance"))
         route_gain = swiss_services.number(route.get("elevation"))
+        estimate = (
+            runtime_model.predict_minutes(time_model, route_km, route_gain)
+            if time_model is not None and route_km is not None and route_gain is not None
+            else None
+        )
         col4.metric(
             "⏱️ Your estimated time",
             (
-                f"{runtime_model.predict_minutes(time_model, route_km, route_gain):.0f} min"
-                if time_model is not None and route_km is not None and route_gain is not None
-                else "Log runs first"
+                "Log runs first"
+                if estimate is None
+                else f"{estimate:.0f} min"
+                + ("" if model_error is None else f" (±{model_error:.1f})")
             ),
-            help=f"Learned from {runner}'s logged runs (see Your running log).",
+            help=(
+                f"Learned from {runner}'s logged runs. ± is the model's average "
+                "error on runs it did not see."
+            ),
         )
 
         for message in route.get("preference_warnings", []):
             st.warning(message)
+
+        # Use the estimate to check whether the route fits the available time.
+        if estimate is not None and time_available:
+            if estimate > time_available:
+                st.warning(
+                    f"⏱️ About {estimate:.0f} min: {estimate - time_available:.0f} min "
+                    f"longer than your available {time_available} min."
+                )
+            else:
+                st.caption(f"⏱️ Fits into your available {time_available} min.")
 
         with st.expander(f"How Route {i + 1} was scored"):
             breakdown = route.get("score_breakdown")
