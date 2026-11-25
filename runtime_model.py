@@ -1,4 +1,5 @@
-# Source code generated with the assistance of Claude (Anthropic, Claude Opus 5.5, 2026).
+# AI use: generated with Claude (Anthropic, Claude Opus 5.5, 2026).
+# See README.md, "AI use".
 """Predict how long a runner needs for a route, learned from their own past runs.
 
 Each row in runs.csv is one real run: who ran it, its distance, its
@@ -44,6 +45,7 @@ def log_run(runner, distance_km, elevation_gain_m, time_min):
     row = pd.DataFrame(
         [[runner, distance_km, elevation_gain_m, time_min]], columns=COLUMNS
     )
+    # mode="a" appends the row; the column names are written only for a new file.
     row.to_csv(DATA_FILE, mode="a", header=not DATA_FILE.is_file(), index=False)
 
 
@@ -51,6 +53,7 @@ def train_model(runs):
     """Fit the linear regression on the given runs (None if there are too few)."""
     if len(runs) < MIN_RUNS:
         return None
+    # fit() finds the a, b and c with the smallest squared errors on these runs.
     return LinearRegression().fit(runs[FEATURES], runs[TARGET])
 
 
@@ -70,6 +73,7 @@ def test_error(runs, features=FEATURES):
     """
     if len(runs) < MIN_RUNS_FOR_TEST:
         return None
+    # scikit-learn returns negative errors (higher = better), so we flip the sign.
     errors = -cross_val_score(
         LinearRegression(),
         runs[features],
@@ -97,6 +101,7 @@ def learning_curve(runs):
 
 def chart_table(model, runs):
     """Real and estimated times of the logged runs, for the chart in the app."""
+    # A copy of the runs with the model's times; "series" decides the colour.
     estimated = runs.assign(**{TARGET: model.predict(runs[FEATURES])})
     return pd.concat(
         [runs.assign(series="Your real time"), estimated.assign(series="Model estimate")]
