@@ -227,11 +227,7 @@ def is_running_loop(line, lat, lon, distance):
     # Only a small share is run twice: the way from the start to the loop and back.
     segments = [LineString((a, b)) for a, b in zip(coordinates, coordinates[1:])]
     unique_length = unary_union(segments).length
-    if unique_length < (1 - settings.MAX_REPEATED_SHARE) * line.length:
-        return False
-
-    # Round enough: the area enclosed is at least 8% of a circle with the same length.
-    return line.convex_hull.area >= 0.08 * unique_length**2 / (4 * math.pi)
+    return unique_length >= (1 - settings.MAX_REPEATED_SHARE) * line.length
 
 
 def turns_around(a, b, c):
@@ -278,14 +274,10 @@ def get_elevation_gain(line):
 
     Returns None if the terrain profile is incomplete.
     """
-    coordinates = list(line.coords)
-    if len(coordinates) > 5000:
-        # The API accepts at most 5000 points: keep every n-th one, incl. both ends.
-        coordinates = [coordinates[round(i * (len(coordinates) - 1) / 4999)] for i in range(5000)]
     response = requests.post(
         PROFILE_URL,
         data={
-            "geom": json.dumps({"type": "LineString", "coordinates": coordinates}),
+            "geom": json.dumps({"type": "LineString", "coordinates": list(line.coords)}),
             "sr": 2056,
             "nb_points": min(400, max(2, math.ceil(line.length / 40) + 1)),  # one height every ~40 m
         },

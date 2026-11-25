@@ -97,13 +97,13 @@ def get_weather(lat, lon):
 
 @st.cache_data(ttl=1800)
 def get_air_quality(lat, lon):
-    """Current European Air Quality Index and fine dust PM2.5 (Open-Meteo)."""
+    """Current European Air Quality Index (Open-Meteo)."""
     response = requests.get(
         AIR_QUALITY_URL,
         params={
             "latitude": lat,
             "longitude": lon,
-            "current": ["european_aqi", "pm2_5"],
+            "current": ["european_aqi"],
         },
         timeout=20,
     )

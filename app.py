@@ -147,9 +147,6 @@ with input_col:
         help="Optional. 0 means no limit. Routes that take longer get a warning.",
     )
 
-    # Only these two change the routes and their score.
-    preferences = {"distance": distance, "hill_preference": hill_preference}
-
 
 # ==========================================
 # 3. FIND ROUTES
@@ -190,7 +187,9 @@ with input_col:
                 st.session_state.routes = routes
                 st.session_state.weather = weather
                 st.session_state.air = air
-                st.session_state.result_preferences = preferences
+                st.session_state.result_title = (
+                    f"🏆 Routes from {st.session_state.start_label} · {distance} km · {hill_preference}"
+                )
                 st.session_state.route_view = 0  # show all routes on the map
             except routing.RoutingUnavailable as error:
                 st.error(str(error))  # e.g. no loop found
@@ -388,19 +387,9 @@ if st.session_state.routes:
         routes = st.session_state.routes
         weather = st.session_state.weather
         air = st.session_state.air
-        used = st.session_state.result_preferences
 
         st.divider()
-        if used != preferences:
-            st.info(
-                "You changed your preferences. Click “Find running routes” again "
-                "to update these results."
-            )
-
-        st.subheader(
-            f"🏆 Routes from {st.session_state.start_label} · {used['distance']} km · "
-            f"{used['hill_preference']}"
-        )
+        st.subheader(st.session_state.result_title)  # the settings used for these routes
         # The current conditions at the start in one line.
         st.caption(
             f"🌤️ Now: {metric_text(weather.get('temperature_2m'), ' °C')} "
