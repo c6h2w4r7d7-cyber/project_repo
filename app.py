@@ -36,7 +36,7 @@ from helpers import metric_text
 
 
 # ==========================================
-# 1. PAGE SETUP AND SESSION STATE
+# 1. PAGE SETUP AND SESSION STATEe
 # ==========================================
 
 # Browser tab title and icon; "wide" uses the full width of the window.
