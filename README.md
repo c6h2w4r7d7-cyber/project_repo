@@ -32,13 +32,16 @@ No API keys are needed. The page has two tabs:
 
 ## Fitness level and elevation preference
 
-**Fitness level:** how often, how far and how fast you usually run. Its pace gives a first time estimate for every route (distance × pace). Once you have logged 3 runs, your personal machine-learning model takes over.
+**Fitness level:** how often, how far and how fast you usually run. It does two things:
 
-| Fitness level | Who is this? | Pace |
-|---|---|---|
-| Beginner | You run now and then, usually up to 5 km. | about 7 min per km |
-| Intermediate | You run every week, usually 5–10 km. | about 6 min per km |
-| Advanced | You train several times a week, often more than 10 km. | about 5 min per km |
+- **First time estimate:** pace × (distance + climbing / 100 m), like the Swiss "Leistungskilometer": 100 m uphill take about as long as one extra km on the flat. Once you have logged 3 runs, your personal machine-learning model takes over.
+- **Distance hint:** if the chosen distance is longer than recommended for your level, a hint appears below the distance slider.
+
+| Fitness level | Who is this? | Pace | Hint above |
+|---|---|---|---|
+| Beginner | You run now and then, usually up to 5 km. | about 7 min per km | 8 km |
+| Intermediate | You run every week, usually 5–10 km. | about 6 min per km | 15 km |
+| Advanced | You train several times a week, often more than 10 km. | about 5 min per km | no hint |
 
 **Elevation preference:** metres uphill per km of the route, the same for everyone. Because it is per km, a level means the same for every distance. The app also shows the total for the chosen distance, e.g. Flat on 5 km means 0–50 m uphill.
 

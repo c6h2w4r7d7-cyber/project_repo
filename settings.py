@@ -10,22 +10,32 @@ DEFAULT_START = (47.4245, 9.3767)
 DEFAULT_START_LABEL = "St. Gallen"
 
 # Fitness level = how often, how far and how fast you usually run.
-# Its pace gives a first time estimate for every route, until the running
-# log has enough runs for the machine-learning model (runtime_model.py).
+# pace_min_per_km  gives a first time estimate for every route, until the
+#                  running log has enough runs for the machine-learning
+#                  model (runtime_model.py).
+# max_km           a longer distance gets a hint below the distance slider
+#                  (None = no limit).
 FITNESS_LEVELS = {
     "Beginner": {
         "description": "You run now and then, usually up to 5 km.",
         "pace_min_per_km": 7,
+        "max_km": 8,
     },
     "Intermediate": {
         "description": "You run every week, usually 5–10 km.",
         "pace_min_per_km": 6,
+        "max_km": 15,
     },
     "Advanced": {
         "description": "You train several times a week, often more than 10 km.",
         "pace_min_per_km": 5,
+        "max_km": None,
     },
 }
+
+# Climbing in the first time estimate, like the Swiss "Leistungskilometer":
+# this many metres uphill take about as long as one extra km on the flat.
+CLIMB_M_PER_EXTRA_KM = 100
 
 # Elevation preference = metres uphill per km of the route (min, max).
 # Per km, so that the levels mean the same for every distance.

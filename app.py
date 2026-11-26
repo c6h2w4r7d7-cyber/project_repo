@@ -120,10 +120,16 @@ with input_col:
             f"{level['description']} About {level['pace_min_per_km']} min per km."
             for level in settings.FITNESS_LEVELS.values()
         ],
-        help="Gives a first time estimate for each route. Once you have logged "
-        f"{runtime_model.MIN_RUNS} runs, your personal model takes over.",
+        help="Gives a first time estimate for each route (until you have logged "
+        f"{runtime_model.MIN_RUNS} runs, then your personal model takes over) "
+        "and a hint when a distance is long for your level.",
     )
     distance = st.slider("Distance (km)", min_value=2, max_value=30, value=5)
+
+    # Hint if the distance is longer than recommended for the fitness level.
+    max_km = settings.FITNESS_LEVELS[fitness]["max_km"]
+    if max_km is not None and distance > max_km:
+        st.caption(f"⚠️ {distance} km is long for your fitness level ({fitness}: up to {max_km} km).")
 
     # The captions show the climbing for the chosen distance. The key keeps
     # the choice when the captions change with the distance.
@@ -242,7 +248,8 @@ with log_tab:
         st.info(
             f"{runner} has logged {len(my_runs)} run(s). Until there are "
             f"{runtime_model.MIN_RUNS}, time estimates use the pace of your fitness "
-            f"level ({fitness_pace} min per km)."
+            f"level ({fitness_pace} min per km, every {settings.CLIMB_M_PER_EXTRA_KM} m "
+            "uphill counts as one extra km)."
         )
     else:
         # coef_ holds the learned a (per km) and b (per metre), intercept_ the constant c.
@@ -405,7 +412,8 @@ if st.session_state.routes:
             score = route["scoring"]
 
             # Time estimate: the personal model (section 4) if it exists,
-            # otherwise distance × the pace of the fitness level.
+            # otherwise the pace of the fitness level × (distance + climbing
+            # as extra km), like the Swiss "Leistungskilometer".
             if time_model is not None:
                 estimate = runtime_model.predict_minutes(time_model, route["distance"], route["elevation"])
                 estimate_text = f"{estimate:.0f} min" + ("" if model_error is None else f" ±{model_error:.0f}")
@@ -414,10 +422,12 @@ if st.session_state.routes:
                     "error on runs it did not see."
                 )
             else:
-                estimate = route["distance"] * fitness_pace
+                extra_km = route["elevation"] / settings.CLIMB_M_PER_EXTRA_KM
+                estimate = fitness_pace * (route["distance"] + extra_km)
                 estimate_text = f"~{estimate:.0f} min"
                 estimate_help = (
-                    f"Rough estimate: {fitness_pace} min per km ({fitness}), hills not included. "
+                    f"Rough estimate: {fitness_pace} min per km ({fitness}), and every "
+                    f"{settings.CLIMB_M_PER_EXTRA_KM} m uphill counts as one extra km. "
                     f"Log {runtime_model.MIN_RUNS} runs for a personal estimate."
                 )
 
