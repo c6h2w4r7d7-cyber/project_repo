@@ -41,7 +41,7 @@ from helpers import metric_text
 
 # Browser tab title and icon; "wide" uses the full width of the window.
 st.set_page_config(page_title="RunComfy AI", page_icon="🏃", layout="wide")
-st.title("🏃 RunComfy AI")
+st.title(" RunComfy AI")
 st.caption("Find a comfortable running route in Switzerland.")
 
 # Streamlit runs this file again from the top after every click (a "rerun").
