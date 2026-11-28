@@ -49,7 +49,9 @@ st.set_page_config(page_title="RunComfy AI", page_icon="🏃", layout="wide")
 # background sets it apart from the page and hides the text that scrolls under
 # it. The small padding keeps the header only a little taller than the title.
 
-header_background = "#0e1117" if st.context.theme.type == "dark" else "#ffffff"
+header_background = st.get_option("theme.backgroundColor")
+if not header_background:
+    header_background = "#0e1117" if st.context.theme.type == "dark" else "#ffffff"
 st.html(f"""
 <style>
 [data-testid="stLayoutWrapper"]:has(> .st-key-page_header) {{
