@@ -49,7 +49,33 @@ st.set_page_config(page_title="RunComfy AI", page_icon="🏃", layout="wide")
 # background sets it apart from the page and hides the text that scrolls under
 # it. The small padding keeps the header only a little taller than the title.
 
-st.title("🏃 RunComfy AI")
+header_background = st.get_option("theme.backgroundColor")
+if not header_background:
+    header_background = "#0e1117" if st.context.theme.type == "dark" else "#ffffff"
+st.html(f"""
+<style>
+.stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stLayoutWrapper"]:has(> .st-key-page_header) {{
+    background-color: {header_background} !important;
+}}
+[data-testid="stLayoutWrapper"]:has(> .st-key-page_header) {{
+    position: sticky;
+    top: 3.75rem;
+    z-index: 999;
+    padding: 0 0.75rem;
+}}
+.st-key-page_header h1 {{
+    font-size: 2.25rem;
+    padding: 0.25rem 0;
+}}
+.st-key-page_header [data-testid="stMarkdownContainer"] {{
+    margin-bottom: 0;
+}}
+</style>
+""")
+with st.container(key="page_header"):
+    st.title("🏃 RunComfy AI")
 st.caption("Find a comfortable running route in Switzerland.")
 
 # Streamlit runs this file again from the top after every click (a "rerun").
