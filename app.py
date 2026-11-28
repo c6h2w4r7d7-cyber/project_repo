@@ -1,7 +1,7 @@
 # AI use: the original page was generated with ChatGPT (OpenAI, 2026).
 # Generated with Claude (Anthropic, Claude Opus 5.5, 2026): the page layout,
-# the location search, the running log (section 4), the time estimate and the
-# GPX download. Claude also restructured and commented the file.
+# the sticky title, the location search, the running log (section 4), the time
+# estimate and the GPX download. Claude also restructured and commented the file.
 # See README.md, "AI use".
 """RunComfy AI: find a comfortable running loop in Switzerland.
 
@@ -41,7 +41,25 @@ from helpers import metric_text
 
 # Browser tab title and icon; "wide" uses the full width of the window.
 st.set_page_config(page_title="RunComfy AI", page_icon="🏃", layout="wide")
-st.title("🏃 RunComfy AI")
+
+# The title stays at the top like a header while the rest of the page scrolls.
+# A container with a key gets the CSS class "st-key-<key>"; Streamlit puts it
+# inside a "layout wrapper". The CSS makes that wrapper "sticky": it stops
+# 3.75rem from the top, right below Streamlit's own top bar. The background
+# colour of the page hides the text that scrolls under it.
+header_background = "#0e1117" if st.context.theme.type == "dark" else "#ffffff"
+st.html(f"""
+<style>
+[data-testid="stLayoutWrapper"]:has(> .st-key-page_header) {{
+    position: sticky;
+    top: 3.75rem;
+    z-index: 999;
+    background-color: {header_background};
+}}
+</style>
+""")
+with st.container(key="page_header"):
+    st.title("🏃 RunComfy AI")
 st.caption("Find a comfortable running route in Switzerland.")
 
 # Streamlit runs this file again from the top after every click (a "rerun").

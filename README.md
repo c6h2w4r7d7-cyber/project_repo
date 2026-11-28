@@ -71,7 +71,7 @@ We used generative AI to write code (course rules: slides 9–10 of the project 
 
 | File | Generated with | Changed with |
 |---|---|---|
-| `app.py` | ChatGPT (OpenAI); layout, location search, running log, time estimate and GPX download with Claude (Anthropic) | Claude: split into files, simplified, comments |
+| `app.py` | ChatGPT (OpenAI); layout, sticky title, location search, running log, time estimate and GPX download with Claude (Anthropic) | Claude: split into files, simplified, comments |
 | `routing.py` (was `swiss_services.py`) | ChatGPT; `to_gpx()` and `turns_around()` with Claude | Claude: `find_routes()` moved here from `app.py`, loop checks changed, comments |
 | `apis.py`, `scoring.py`, `helpers.py` | ChatGPT (code from `app.py` and `swiss_services.py`) | Claude: moved, simplified, comments |
 | `settings.py` | Claude | |
