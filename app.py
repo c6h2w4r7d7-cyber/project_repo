@@ -55,7 +55,6 @@ st.html(f"""
     position: sticky;
     top: 3.75rem;
     z-index: 999;
-    background-color: {header_background};
     padding: 0 0.75rem;
 }}
 .st-key-page_header h1 {{
