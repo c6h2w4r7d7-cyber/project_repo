@@ -59,7 +59,7 @@ st.html("""
     position: sticky;
     top: 3.75rem;
     z-index: 999;
-    padding: 0 0.75rem;
+    padding: 0 0.75rem 0.5rem;
 }
 .st-key-page_header h1 {
     font-size: 2.25rem;
