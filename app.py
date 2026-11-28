@@ -52,6 +52,11 @@ st.set_page_config(page_title="RunComfy AI", page_icon="🏃", layout="wide")
 
 st.html(f"""
 <style>
+@media (prefers-color-scheme: dark) {{
+    [data-testid="stLayoutWrapper"]:has(> .st-key-page_header) {{
+        background-color: var(--background-color, #0e1117);
+    }}
+}}
 [data-testid="stLayoutWrapper"]:has(> .st-key-page_header) {{
     position: sticky;
     top: 3.75rem;
