@@ -59,6 +59,7 @@ st.html(f"""
     padding: 0 0.75rem;
 }}
 .st-key-page_header h1 {{
+    font-size: 2.25rem;
     padding: 0.25rem 0;
 }}
 /* Streamlit gives the title a negative margin below; 0 keeps it inside the box. */
