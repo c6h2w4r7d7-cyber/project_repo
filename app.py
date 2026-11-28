@@ -48,29 +48,26 @@ st.set_page_config(page_title="RunComfy AI", page_icon="🏃", layout="wide")
 # 3.75rem from the top, right below Streamlit's own top bar. A light grey
 # background sets it apart from the page and hides the text that scrolls under
 # it. The small padding keeps the header only a little taller than the title.
-
+header_background = st.get_option("theme.backgroundColor")
+if not header_background:
+    header_background = "#0e1117" if st.context.theme.type == "dark" else "#ffffff"
 
 st.html(f"""
 <style>
+[data-testid="stLayoutWrapper"]:has(> .st-key-page_header),
+.st-key-page_header {{
+    background-color: {header_background} !important;
+}}
 [data-testid="stLayoutWrapper"]:has(> .st-key-page_header) {{
     position: sticky;
     top: 3.75rem;
     z-index: 999;
-    background-color: var(--background-color, #ffffff);
     padding: 0 0.75rem;
 }}
-
-@media (prefers-color-scheme: dark) {{
-    [data-testid="stLayoutWrapper"]:has(> .st-key-page_header) {{
-        background-color: var(--background-color, #0e1117);
-    }}
-}}
-
 .st-key-page_header h1 {{
     font-size: 2.25rem;
     padding: 0.25rem 0;
 }}
-
 .st-key-page_header [data-testid="stMarkdownContainer"] {{
     margin-bottom: 0;
 }}
