@@ -45,9 +45,10 @@ st.set_page_config(page_title="RunComfy AI", page_icon="🏃", layout="wide")
 # The title stays at the top like a header while the rest of the page scrolls.
 # A container with a key gets the CSS class "st-key-<key>"; Streamlit puts it
 # inside a "layout wrapper". The CSS makes that wrapper "sticky": it stops
-# 3.75rem from the top, right below Streamlit's own top bar. The background
-# colour of the page hides the text that scrolls under it.
-header_background = "#0e1117" if st.context.theme.type == "dark" else "#ffffff"
+# 3.75rem from the top, right below Streamlit's own top bar. A light grey
+# background sets it apart from the page and hides the text that scrolls under
+# it. The small padding keeps the header only a little taller than the title.
+header_background = "#262730" if st.context.theme.type == "dark" else "#f0f2f6"
 st.html(f"""
 <style>
 [data-testid="stLayoutWrapper"]:has(> .st-key-page_header) {{
@@ -55,6 +56,14 @@ st.html(f"""
     top: 3.75rem;
     z-index: 999;
     background-color: {header_background};
+    padding: 0 0.75rem;
+}}
+.st-key-page_header h1 {{
+    padding: 0.25rem 0;
+}}
+/* Streamlit gives the title a negative margin below; 0 keeps it inside the box. */
+.st-key-page_header [data-testid="stMarkdownContainer"] {{
+    margin-bottom: 0;
 }}
 </style>
 """)
