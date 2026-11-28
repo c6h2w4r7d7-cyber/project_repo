@@ -51,11 +51,14 @@ st.set_page_config(page_title="RunComfy AI", page_icon="🏃", layout="wide")
 
 st.html("""
 <style>
+[data-testid="stLayoutWrapper"]:has(.st-key-page_header),
 .st-key-page_header {
+    background-color: var(--background-color, Canvas) !important;
+}
+[data-testid="stLayoutWrapper"]:has(.st-key-page_header) {
     position: sticky;
     top: 3.75rem;
     z-index: 999;
-    background-color: var(--background-color) !important;
     padding: 0 0.75rem;
 }
 .st-key-page_header h1 {
